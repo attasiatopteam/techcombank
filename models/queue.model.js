@@ -1,4 +1,3 @@
-const { Timestamp } = require('mongodb')
 const mongoose = require('mongoose')
 const queue = mongoose.Schema({
     auditor: String,
@@ -31,6 +30,6 @@ const queue = mongoose.Schema({
         type:String,
         require:true
     }
-}, { timestamps: true }))
+}, { timestamps: true })
 
 module.exports = mongoose.model("queue",queue)

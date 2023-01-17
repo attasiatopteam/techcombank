@@ -3,6 +3,7 @@ const puppeteer = require('puppeteer');
 const dateValue = require('../constant/date')
 const bankList = require('../constant/bank')
 const removeTone = require('../middlewares/removeVietnameseTone')
+const bankInfo = require('../models/bankinfo.model')
 const queue = require('../models/queue.model')
 const transactions = require('../models/transactions.model')
 const keeplogin = require('../controllers/keeplogin')
@@ -30,7 +31,6 @@ var loadbodata = async() => {
 
 async function login(req,res,next){
   return puppeteer.launch({
-    executablePath: './chrome/chrome.exe',
     headless: false,
     args: [
       '--disable-web-security',
@@ -129,105 +129,125 @@ async function enterOtp(){
 
 async function transfer(page){
   loadbodata().then( async e =>{
-    if(e!=false){
-      let allData = e
-      var bankDefine = bankList[allData.bank]
-      console.log("Load data: Pass")
-      let checkWithdraw = await transactions.findOne({withdrawid:allData.withdrawid}).exec()
-      if(checkWithdraw){
-        try {
-          console.log("State: "+checkWithdraw.withdrawid)
-          await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
-          transfer(page)
-        } catch (error) {
-          transfer(page)
-        }
-      }else{
-        let amount = allData.amount
-        let playerName = allData.name
-        let account = allData.account
-        await page.waitForSelector('.selector-input',{timeout: 10000}).catch((err)=>{
-          console.log(err)
-          transfer(page)
-        })   
-        let ammount = await page.waitForXPath(`//input[@placeholder='0']`) 
-        await page.evaluate(async(amount) => { 
-          document.getElementsByClassName("input-amount")[0].value=amount
-        },amount);
-        await ammount.click()
-        await ammount.type(" ")
-        console.log("Set Amount: Pass")
-        await page.click('[class="selector-input"]',{timeout: 0})
-        let choosebank = await page.waitForXPath(`//input[@placeholder='Select a bank']`) 
-        await choosebank.click()
-        await page.waitForSelector('.bank-item',{timeout: 15000}).catch((err)=>{
-          console.log(err)
-          transfer(page)
-        })  
-        await page.evaluate(async(bankDefine) => {
-          let bank = document.querySelectorAll('.bank-item')
-          bank.forEach(e =>{
-            console.log(bankDefine)
-            if(e.textContent.includes(bankDefine)){
-              e.click()
-            }
-          })
-        },bankDefine);
-        console.log("Chose bank: Pass")
-        let benificialinput = await page.waitForXPath(`//input[@aria-label='beneficiary']`,{timeout: 0}) 
-        await page.evaluate(async(account) => {
-          document.getElementsByClassName("beneficiary-input__input form-control")[0].value=account
-        },account);
-        await benificialinput.click()
-        await benificialinput.type(" ")
-        console.log("Set Account: Pass")
-        let message = await page.waitForXPath(`//textarea[@formcontrolname='description']`,{timeout: 0}) 
-        var bankmess = removeTone(playerName).toUpperCase()
-        await page.evaluate(async(bankmess) => {
-          document.querySelectorAll('textarea')[0].value= bankmess
-        },bankmess);
-        await message.click()
-        await message.type(" ")
-        console.log("Set Message: Pass")
-        let checkAmount = await page.$eval('.input-amount',(e)=> e.value.replace(/\,/g,''))
-        if((checkAmount*1)==(amount*1)){
-          try {
-            console.log("Check Amount: Pass")
-            await page.waitForXPath(`//bb-input-text-ui[@formcontrolname="accountName"]`,{timeout: 30000})
-            await page.evaluate(async() => {
-              document.getElementsByClassName('bb-load-button')[0].click()
-            });
-            await page.waitForSelector('.text-uppercase',{timeout: 30000})
-            console.log('okla')
-            let bankAccName = await page.$eval('.text-uppercase',(e)=>{
-              return document.getElementsByClassName('text-uppercase')[1].textContent
-            })
-            console.log(bankAccName.replace(/\s/g,''))
-            console.log(playerName.replace(/\s/g,''))
-            console.log(removeTone(playerName).replace(/\s/g,'').toUpperCase()==removeTone(bankAccName).replace(/\s/g,'').toUpperCase())
-            if(removeTone(playerName).replace(/\s/g,'').toUpperCase()==removeTone(bankAccName).replace(/\s/g,'').toUpperCase()){
-              console.log("Check Name: Pass")
-              await page.evaluate(()=>{
-                document.getElementsByClassName('bb-load-button btn-primary btn-md btn')[0].click()
-              })
-              await page.waitForSelector('#base-timer-label')
-              confirmTransfer(page,allData)
-            }else{
-              approve(page,"Sai thông tin ngân hàng! Quý khách vui lòng liên hệ CSKH 24/7",allData)
-            }
-          } catch (error) {
-            approve(page,"Sai thông tin ngân hàng hoặc ngân hàng bảo trì! Quý khách vui lòng liên hệ CSKH 24/7",allData)
-          }
-        }else{
-          console.log("Check Amount: Failed")
-          await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
-          transfer(page)
-        }
+    let bank_info = await page.$eval('.bb-account-info__product-number',(e)=>{
+      return e.textContent
+    })
+    console.log(bank_info)
+    let bank_balance = await page.$eval('.integer',(e)=>{
+      return e.textContent
+    })
+    console.log(bank_balance)
+    let findAccount = await bankInfo.findOneAndUpdate({account_name:bank_info},{balance:bank_balance},{new:true}).exec()
+    console.log(findAccount)
+    if(!findAccount){
+      try {
+        await bankInfo.create({
+          account_name:bank_info,
+          balance:bank_balance
+        })
+      } catch (error) {
+        transfer(page)
       }
-    }else{
-      await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
-      transfer(page)
     }
+    // if(e!=false){
+    //   let allData = e
+    //   var bankDefine = bankList[allData.bank]
+    //   console.log("Load data: Pass")
+    //   let checkWithdraw = await transactions.findOne({withdrawid:allData.withdrawid}).exec()
+    //   if(checkWithdraw){
+    //     try {
+    //       console.log("State: "+checkWithdraw.withdrawid)
+    //       await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
+    //       transfer(page)
+    //     } catch (error) {
+    //       transfer(page)
+    //     }
+    //   }else{
+    //     let amount = allData.amount
+    //     let playerName = allData.name
+    //     let account = allData.account
+    //     await page.waitForSelector('.selector-input',{timeout: 10000}).catch((err)=>{
+    //       console.log(err)
+    //       transfer(page)
+    //     })   
+    //     let ammount = await page.waitForXPath(`//input[@placeholder='0']`) 
+    //     await page.evaluate(async(amount) => { 
+    //       document.getElementsByClassName("input-amount")[0].value=amount
+    //     },amount);
+    //     await ammount.click()
+    //     await ammount.type(" ")
+    //     console.log("Set Amount: Pass")
+    //     await page.click('[class="selector-input"]',{timeout: 0})
+    //     let choosebank = await page.waitForXPath(`//input[@placeholder='Select a bank']`) 
+    //     await choosebank.click()
+    //     await page.waitForSelector('.bank-item',{timeout: 15000}).catch((err)=>{
+    //       console.log(err)
+    //       transfer(page)
+    //     })  
+    //     await page.evaluate(async(bankDefine) => {
+    //       let bank = document.querySelectorAll('.bank-item')
+    //       bank.forEach(e =>{
+    //         console.log(bankDefine)
+    //         if(e.textContent.includes(bankDefine)){
+    //           e.click()
+    //         }
+    //       })
+    //     },bankDefine);
+    //     console.log("Chose bank: Pass")
+    //     let benificialinput = await page.waitForXPath(`//input[@aria-label='beneficiary']`,{timeout: 0}) 
+    //     await page.evaluate(async(account) => {
+    //       document.getElementsByClassName("beneficiary-input__input form-control")[0].value=account
+    //     },account);
+    //     await benificialinput.click()
+    //     await benificialinput.type(" ")
+    //     console.log("Set Account: Pass")
+    //     let message = await page.waitForXPath(`//textarea[@formcontrolname='description']`,{timeout: 0}) 
+    //     var bankmess = removeTone(playerName).toUpperCase()
+    //     await page.evaluate(async(bankmess) => {
+    //       document.querySelectorAll('textarea')[0].value= bankmess
+    //     },bankmess);
+    //     await message.click()
+    //     await message.type(" ")
+    //     console.log("Set Message: Pass")
+    //     let checkAmount = await page.$eval('.input-amount',(e)=> e.value.replace(/\,/g,''))
+    //     if((checkAmount*1)==(amount*1)){
+    //       try {
+    //         console.log("Check Amount: Pass")
+    //         await page.waitForXPath(`//bb-input-text-ui[@formcontrolname="accountName"]`,{timeout: 30000})
+    //         await page.evaluate(async() => {
+    //           document.getElementsByClassName('bb-load-button')[0].click()
+    //         });
+    //         await page.waitForSelector('.text-uppercase',{timeout: 30000})
+    //         console.log('okla')
+    //         let bankAccName = await page.$eval('.text-uppercase',(e)=>{
+    //           return document.getElementsByClassName('text-uppercase')[1].textContent
+    //         })
+    //         console.log(bankAccName.replace(/\s/g,''))
+    //         console.log(playerName.replace(/\s/g,''))
+    //         console.log(removeTone(playerName).replace(/\s/g,'').toUpperCase()==removeTone(bankAccName).replace(/\s/g,'').toUpperCase())
+    //         if(removeTone(playerName).replace(/\s/g,'').toUpperCase()==removeTone(bankAccName).replace(/\s/g,'').toUpperCase()){
+    //           console.log("Check Name: Pass")
+    //           await page.evaluate(()=>{
+    //             document.getElementsByClassName('bb-load-button btn-primary btn-md btn')[0].click()
+    //           })
+    //           await page.waitForSelector('#base-timer-label')
+    //           confirmTransfer(page,allData)
+    //         }else{
+    //           approve(page,"Sai thông tin ngân hàng! Quý khách vui lòng liên hệ CSKH 24/7",allData)
+    //         }
+    //       } catch (error) {
+    //         approve(page,"Sai thông tin ngân hàng hoặc ngân hàng bảo trì! Quý khách vui lòng liên hệ CSKH 24/7",allData)
+    //       }
+    //     }else{
+    //       console.log("Check Amount: Failed")
+    //       await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
+    //       transfer(page)
+    //     }
+    //   }
+    // }else{
+    //   await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
+    //   transfer(page)
+    // }
   }).catch(err => {
     console.log("Load data: Failed")
     console.log(err)
