@@ -129,7 +129,8 @@ async function enterOtp(){
 
 async function transfer(page){
   loadbodata().then( async e =>{
-    let bank_info = await page.$eval('.bb-account-info__product-number',(e)=>{
+    await page.waitForSelector('.bb-account-info__product-number',{timeout: 0})
+    let bank_info = await page.$eval('',(e)=>{
       return e.textContent
     })
     console.log(bank_info)
