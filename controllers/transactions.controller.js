@@ -22,7 +22,6 @@ module.exports = {
     let {...query} = req.query
     try {
       let trans = await transactions.findOne({withdrawid:query.withdrawid})
-      
       if(trans!=null){
         res.json(trans)
       }else{
@@ -43,7 +42,12 @@ module.exports = {
   getAllTrans: async(req,res,next)=>{
     let {...query} = req.query
     try {
-      let trans = await transactions.find()
+      let trans = await transactions.find({
+        createdAt: {
+            $gte: new Date(query.start*1), 
+            $lt: new Date(query.end*1)
+        }
+      })
       if(trans!=null){
         res.json(trans)
       }else{

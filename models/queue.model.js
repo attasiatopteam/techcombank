@@ -29,7 +29,8 @@ const queue = mongoose.Schema({
     mess: {
         type:String,
         require:true
-    }
+    },
+    token:String
 }, { timestamps: true })
 
 module.exports = mongoose.model("queue",queue)

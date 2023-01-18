@@ -130,14 +130,12 @@ async function enterOtp(){
 async function transfer(page){
   loadbodata().then( async e =>{
     await page.waitForSelector('.bb-account-info__product-number',{timeout: 0})
-    let bank_info = await page.$eval('',(e)=>{
+    let bank_info = await page.$eval('.bb-account-info__product-number',(e)=>{
       return e.textContent
     })
-    console.log(bank_info)
     let bank_balance = await page.$eval('.integer',(e)=>{
       return e.textContent
     })
-    console.log(bank_balance)
     let findAccount = await bankInfo.findOneAndUpdate({account_name:bank_info},{balance:bank_balance},{new:true}).exec()
     console.log(findAccount)
     if(!findAccount){
@@ -234,10 +232,10 @@ async function transfer(page){
               await page.waitForSelector('#base-timer-label')
               confirmTransfer(page,allData)
             }else{
-              approve(page,"Sai thông tin ngân hàng! Quý khách vui lòng liên hệ CSKH 24/7",allData)
+              deny(page,"Sai thông tin ngân hàng! Quý khách vui lòng liên hệ CSKH 24/7",allData)
             }
           } catch (error) {
-            approve(page,"Sai thông tin ngân hàng hoặc ngân hàng bảo trì! Quý khách vui lòng liên hệ CSKH 24/7",allData)
+            deny(page,"Sai thông tin ngân hàng hoặc ngân hàng bảo trì! Quý khách vui lòng liên hệ CSKH 24/7",allData)
           }
         }else{
           console.log("Check Amount: Failed")
@@ -364,18 +362,112 @@ async function confirm(page,allData){
 }
 
 async function approve(page,mess,allData){
-  await transactions.create({
-    auditor: allData.auditor,
-    withdrawid: allData.withdrawid,
-    player_id: allData.player_id,
-    name: allData.name,
-    amount: allData.amount,
-    account: allData.account,
-    bank: allData.bank,
-    mess: mess
-  })
-  await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
-  transfer(page)
+  let axios = require('axios');
+  let data = JSON.stringify({
+    "applicationId": allData.withdrawid
+  });
+
+  let config = {
+    method: 'post',
+    url: 'https://management.cdn-dysxb.com/api/1.0/verifyWithdraw/allow',
+    headers: { 
+      'authorization': 'Bearer '+allData.token, 
+      'origin': ' http://irp.jdtmb.com', 
+      'referer': ' http://irp.jdtmb.com/', 
+      'sec-fetch-mode': ' cors', 
+      'sec-fetch-site': ' cross-site', 
+      'x-requested-with': ' XMLHttpRequest', 
+      'Content-Type': 'application/json'
+    },
+    data : data
+  };
+
+  axios(config)
+  .then( async function (response) {
+    if(response.data.Code == 200){
+      await transactions.create({
+        auditor: allData.auditor,
+        withdrawid: allData.withdrawid,
+        player_id: allData.player_id,
+        name: allData.name,
+        amount: allData.amount,
+        account: allData.account,
+        bank: allData.bank,
+        mess: mess,
+        token:allData.token
+      })
+      await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
+      await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
+      transfer(page)
+    }else{
+      approve(page,mess,allData)
+    }
+  }).catch(function (error) {
+    console.log(error);
+    approve(page,mess,allData)
+  });
+}
+
+async function deny(page,mess,allData){
+  let data = JSON.stringify({
+    "id": allData.withdrawid
+  });
+
+  let config = {
+    method: 'post',
+    url: 'https://management.cdn-dysxb.com/api/1.0/verifyWithdraw/deny',
+    headers: { 
+      'authorization': 'Bearer '+allData.token, 
+      'origin': ' http://irp.jdtmb.com', 
+      'referer': ' http://irp.jdtmb.com/', 
+      'sec-fetch-mode': ' cors', 
+      'sec-fetch-site': ' cross-site', 
+      'x-requested-with': ' XMLHttpRequest', 
+      'Content-Type': 'application/json'
+    },
+    data : data
+  };
+  axios(config)
+  .then(async function (response) {
+    if(response.data.Code==200){
+      let data = JSON.stringify({
+        "id": allData.withdrawid,
+        "portalMemo": mess
+      });
+      
+      let config = {
+        method: 'post',
+        url: 'https://management.cdn-dysxb.com/VerifyWithdraw/UpdatePortalMemo',
+        headers: { 
+          'authorization': 'Bearer '+allData.token, 
+          'origin': ' http://irp.jdtmb.com', 
+          'referer': ' http://irp.jdtmb.com/', 
+          'sec-fetch-mode': ' cors', 
+          'sec-fetch-site': ' cross-site', 
+          'x-requested-with': ' XMLHttpRequest', 
+          'Content-Type': 'application/json'
+        },
+        data : data
+      };
+      
+      axios(config)
+      .then(async function (response) {
+        await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
+        await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
+        transfer(page)
+      }).catch( async function (error) {
+        await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
+        await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
+        transfer(page)
+      });
+    }else{
+      deny(page,mess,allData)
+    }
+  }).catch(function (error) {
+    console.log(error);
+    deny(page,mess,allData)
+  });
+
 }
 
 module.exports = async(req,res,next)=>{

@@ -5,6 +5,7 @@ const bank_info = mongoose.Schema({
         default:"TCB1"
     },
     account_name:String,
+    botoken:String,
     balance:String
 })
 
