@@ -277,15 +277,10 @@ async function confirmTransfer(page,allData){
     data : info
   };
 
-  return axios(config)
+  axios(config)
   .then(function (response) {
     console.log(response.data)
-    if(response.data.statusCode==200){
-      confirm(page,allData)
-      console.log(response.data.mess)
-    }else{
-      confirmTransfer(page,allData)
-    }
+    confirm(page,allData)
   })
   .catch(function (error) {
     console.log(error);
@@ -298,29 +293,11 @@ async function confirm(page,allData){
     let mess = "TCB1 Chuyển khoản thành công"
     await approve(page,mess,allData)
   }).catch(async(res) => {
-    console.log("Failed")
-    approve(page,"Có vấn đề trong quá trình xuất khoản, vui lòng kiểm tra lại số dư tài khoản!",allData)
-    let config = {
-      method: 'post',
-      url: data.portal+'portal?path=TotalControl/v2/devices/'+portal.device+'/sendAai?token='+portal.token+'&params={query:\'T:Nhập mã mở khoá để xác thực\',action:\'getText\'}',
-      headers: { }
-    };
-    axios(config)
-    .then(async function (response) {
-      if(!response.data.value.retval){
-        console.log("not okay")
-        await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
-        console.log("Failed")
-        transfer(page)
-      }else{
-        transfer(page)
-      }
-    }).catch(err => console.log(err));
+    await approve(page,mess,allData)
   })
 }
 
 async function approve(page,mess,allData){
-  let axios = require('axios');
   let info = JSON.stringify({
     "applicationId": allData.withdrawid
   });
@@ -355,6 +332,33 @@ async function approve(page,mess,allData){
         token:allData.token
       })
       await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
+      let info = JSON.stringify({
+        "id": allData.withdrawid,
+        "memo": mess
+      });
+      
+      let config = {
+        method: 'post',
+        url: 'https://management.cdn-dysxb.com/VerifyWithdraw/UpdateMemo',
+        headers: { 
+          'authorization': ' Bearer '+allData.token, 
+          'origin': ' http://irp.jdtmb.com', 
+          'referer': ' http://irp.jdtmb.com/', 
+          'sec-fetch-mode': ' cors', 
+          'sec-fetch-site': ' cross-site', 
+          'x-requested-with': ' XMLHttpRequest', 
+          'Content-Type': 'application/json'
+        },
+        data : info
+      };
+      
+      await axios(config)
+      .then(function (response) {
+        console.log(JSON.stringify(response.data));
+      })
+      .catch(function (error) {
+        console.log(error);
+      });
       await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
       transfer(page)
     }else{
