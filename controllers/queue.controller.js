@@ -18,6 +18,19 @@ module.exports = {
       })
     }
   },
+  getQuere: async(req,res,next)=>{
+    let {...body} = req.body
+    try {
+      let getQuere = await queue.findOne().sort({createdAt:1})
+      res.json(getQuere)
+    } catch (error) {
+      res.json({
+        status_code:503,
+        valid:false,
+        error: error
+      })
+    }
+  },
   deleteQueue: async(req,res,next)=>{
     let {...body} = req.body
     try {

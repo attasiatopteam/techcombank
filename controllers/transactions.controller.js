@@ -48,6 +48,7 @@ module.exports = {
             $lt: new Date(query.end*1)
         }
       })
+
       if(trans!=null){
         res.json(trans)
       }else{

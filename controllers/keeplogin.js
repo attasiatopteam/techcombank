@@ -1,44 +1,18 @@
 const axios = require('axios')
-
-module.exports = function keeplogin(token,device){
+const fs = require('fs');
+module.exports = function keeplogin(baseUrl,device,token){
   let data = '';
   var config = {
     method: 'post',
-    url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/sendAai?token='+token+'&params={query:\'T:OK\',action:\'click\'}',
+    url: baseUrl+'keeplogin?device='+device+'&token='+token,
     headers: { },
     data : data
   };
   axios(config)
   .then(function (response) {
-    let config = {
-      method: 'post',
-      url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/sendAai?token='+token+'&params={query:\'T:Nhập mã mở khoá để xác thực\',action:\'getText\'}',
-      headers: { },
-      data : ""
-    };
-    axios(config)
-    .then(function (response) {
-      if(response.data.value.retval){
-        let data = '';
-        let config = {
-          method: 'post',
-          url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/screen/texts?token='+token+'&text='+"25800",
-          headers: { },
-          data : data
-        };
-        axios(config)
-        .then(async function (response) {
-          keeplogin(token,device)
-        })
-        .catch(function (error) {
-          console.log(error);
-        });
-      }else{
-        keeplogin(token,device)
-      }
-    }).catch(err => console.log(err))
+    console.log(response.data)
   }).catch(function (error) {
-    console.log(error);
+    console.log(error)
   });
 }
 

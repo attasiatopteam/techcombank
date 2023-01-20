@@ -5,15 +5,18 @@ const Router = require('./routers')
 const connectDb = require('./config/database')
 app.use(express.json())
 app.use(express.urlencoded({extended:false}))
+app.set("view engine", "ejs")
+app.set("views", "./views")
+app.use(express.static('./public'))
 app.use(cors())
-app.get('/',(req,res,next)=>{
-  res.send("hello")
-})
 
 Router(app)
 connectDb()
 
-app.listen('3000',()=>{
-  console.log("server running at port 3000")
+app.get('/',(req,res,next)=>{
+  res.render('index')
 })
 
+app.listen('5000',()=>{
+  console.log("server running at port 3000")
+})

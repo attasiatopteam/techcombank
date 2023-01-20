@@ -7,18 +7,18 @@ const bankInfo = require('../models/bankinfo.model')
 const queue = require('../models/queue.model')
 const transactions = require('../models/transactions.model')
 const keeplogin = require('../controllers/keeplogin')
-const fs = require('fs')
-let data = fs.readFileSync('constant/auth.json')
-let auth = JSON.parse(data)
-var device = auth.device
-var token = auth.token
+const fs = require('fs');
 var otp = "2580"
-var page = "a"
+var data = {}
+module.exports = async(req,res,next)=>{
+  data = req.data
+  await login(req,res,next)
+  res.json("Done")
+}
 
-keeplogin(token,device)
 var loadbodata = async() => {
   try {
-    let getInfo = await queue.findOne().exec()
+    let getInfo = await queue.findOne().sort({createdAt:1}).exec()
     if(getInfo){
       return getInfo
     }else{
@@ -30,14 +30,16 @@ var loadbodata = async() => {
 }
 
 async function login(req,res,next){
+  keeplogin(data.portal,data.device,data.token)
   return puppeteer.launch({
     headless: false,
+    // executablePath: './chrome/chrome.exe',
     args: [
       '--disable-web-security',
       '--disable-features=IsolateOrigins',
       '--disable-site-isolation-trials'
     ]
-}).then(async function(browser) {
+  }).then(async function(browser) {
     const page = await browser.newPage();
     try {
       await page.goto('https://onlinebanking.techcombank.com.vn/#/login',{timeout: 0});
@@ -53,7 +55,7 @@ async function login(req,res,next){
       await page.click('[id="kc-form-buttons"]',{timeout: 0})
       confirmLogin(page)
       await page.waitForSelector('.tcb-topbar__nav-expand-marker',{timeout: 0})
-      page.goto("https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other")
+      await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0})
       transfer(page)
     }catch(error){
       console.log({
@@ -69,7 +71,7 @@ async function confirmLogin(page){
   console.log("Input login: Pass")
   let config = {
     method: 'post',
-    url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/screen/inputs?token='+token+'&x=300&y=200&state=press',
+    url: data.portal+'portal?path=TotalControl/v2/devices/'+data.device+'/screen/inputs?token='+data.token+'&x=300&y=200&state=press',
     headers: { },
     data:""
   };
@@ -78,7 +80,7 @@ async function confirmLogin(page){
     .then(function (response) {
       let config = {
         method: 'post',
-        url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/sendAai?token='+token+'&params={query:\'T:Cho phép đăng nhập\',action:\'click\'}',
+        url: data.portal+'portal?path=TotalControl/v2/devices/'+data.device+'/sendAai?token='+data.token+'&params={query:\'T:Cho phép đăng nhập\',action:\'click\'}',
         headers: { },
         data : ""
       };
@@ -88,28 +90,34 @@ async function confirmLogin(page){
         if(!response.data.value.retval){
           confirmLogin(page)
         }else{
-          enterOtp(page)
+          enterOtp(data)
         }
-      }).catch(err => console.log(err))
-    }).catch(err => console.log(err))
+      }).catch(err => {
+        console.log(err)
+        confirmLogin(page)
+      })
+    }).catch(err => {
+      console.log(err)
+      confirmLogin(page)
+    })
   },2000)
 }
 
-async function enterOtp(){
+async function enterOtp(data){
   var config = {
     method: 'post',
-    url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/sendAai?token='+token+'&params={query:\'T:Nhập mã mở khoá để xác thực\',action:\'getText\'}',
+    url: data.portal+'portal?path=TotalControl/v2/devices/'+data.device+'/sendAai?token='+data.token+'&params={query:\'T:Nhập mã mở khoá để xác thực\',action:\'getText\'}',
     headers: { },
     data : ""
   };
   axios(config)
   .then(function (response) {
     if(!response.data.value.retval){
-      enterOtp()
+      enterOtp(data)
     }else{
       var config = {
         method: 'post',
-        url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/screen/texts?token='+token+'&text='+otp,
+        url: data.portal+'portal?path=TotalControl/v2/devices/'+data.device+'/screen/texts?token='+data.token+'&text='+otp,
         headers: { }
       };
       setTimeout(()=>{
@@ -137,7 +145,6 @@ async function transfer(page){
       return e.textContent
     })
     let findAccount = await bankInfo.findOneAndUpdate({account_name:bank_info},{balance:bank_balance},{new:true}).exec()
-    console.log(findAccount)
     if(!findAccount){
       try {
         await bankInfo.create({
@@ -212,11 +219,11 @@ async function transfer(page){
         if((checkAmount*1)==(amount*1)){
           try {
             console.log("Check Amount: Pass")
-            await page.waitForXPath(`//bb-input-text-ui[@formcontrolname="accountName"]`,{timeout: 30000})
+            await page.waitForXPath(`//bb-input-text-ui[@formcontrolname="accountName"]`,{timeout: 15000})
             await page.evaluate(async() => {
               document.getElementsByClassName('bb-load-button')[0].click()
             });
-            await page.waitForSelector('.text-uppercase',{timeout: 30000})
+            await page.waitForSelector('.text-uppercase',{timeout: 15000})
             console.log('okla')
             let bankAccName = await page.$eval('.text-uppercase',(e)=>{
               return document.getElementsByClassName('text-uppercase')[1].textContent
@@ -230,6 +237,7 @@ async function transfer(page){
                 document.getElementsByClassName('bb-load-button btn-primary btn-md btn')[0].click()
               })
               await page.waitForSelector('#base-timer-label')
+              console.log("Confirm transfer: "+data.portal)
               confirmTransfer(page,allData)
             }else{
               deny(page,"Sai thông tin ngân hàng! Quý khách vui lòng liên hệ CSKH 24/7",allData)
@@ -255,115 +263,65 @@ async function transfer(page){
 }
 
 async function confirmTransfer(page,allData){
-  console.log("Transfer: Pass")
-  let config = {
-    method: 'post',
-    url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/screen/inputs?token='+token+'&x=300&y=200&state=press',
-    headers: { },
-    data:""
-  };
-  setTimeout(()=>{
-    axios(config)
-    .then(function(response){
-      let config = {
-        method: 'post',
-        url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/sendAai?token='+token+'&params={query:\'T:Xác thực mã mở khoá\',action:\'getText\'}',
-        headers: { },
-        data : ""
-      };
-      axios(config)
-      .then(async function (response) {
-        console.log(response.data.value.retval)
-        if(!response.data.value.retval){
-          let check = await page.$eval('#base-timer-label', e => e.textContent)
-          console.log(check)
-          if((check*1)<30){
-            await page.evaluate(()=>{
-              document.getElementsByClassName("bb-button-bar__button")[1].click()
-              setTimeout(()=>{
-                  document.getElementsByClassName('confirmation__button')[1].click()
-              },1000)
-            })
-          }
-          confirmTransfer(page,allData)
-        }else{
-          var config = {
-            method: 'post',
-            url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/sendAai?token='+token+'&params={query:\'T:Xác thực mã mở khoá\',action:\'click\'}',
-            headers: { }
-          };
-          axios(config)
-          .then(function (response) {
-            console.log("Transfer: Pass")
-            confirm(page,allData)
-          })
-          .catch(function (error) {
-            console.log(error);
-          });
-        }
-      }).catch(err => console.log(err))
-    }).catch(err => console.log(err))
-  },1000)
-}
+  let info = JSON.stringify({
+    "device": data.device,
+    "token": data.token,
+  });
 
-async function transOtp(page,allData){
-  console.log("Transfer Confirmation: Pass")
   let config = {
     method: 'post',
-    url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/sendAai?token='+token+'&params={query:\'T:Nhập mã mở khoá để xác thực\',action:\'getText\'}',
-    headers: { }
+    url: data.portal+'verifyotp',
+    headers: { 
+      'Content-Type': 'application/json'
+    },
+    data : info
   };
-  axios(config)
-  .then(async function (response) {
-    let config = {
-      method: 'post',
-      url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/screen/texts?token='+token+'&text='+otp,
-      headers: { }
-    };
-    axios(config)
-    .then(function (response) {
+
+  return axios(config)
+  .then(function (response) {
+    console.log(response.data)
+    if(response.data.statusCode==200){
       confirm(page,allData)
-    })
-  }).catch(err => console.log(err));
+      console.log(response.data.mess)
+    }else{
+      confirmTransfer(page,allData)
+    }
+  })
+  .catch(function (error) {
+    console.log(error);
+  });
 }
 
 async function confirm(page,allData){
-  let checkSuccess = await page.$('#base-timer-label')
-  console.log(checkSuccess)
-  if(checkSuccess){
-    console.log("Transfer OTP: Failed")
-    transOtp(page,allData)
-  }else{
-    await page.waitForSelector('.successful__cover',{timeout: 10000}).then(async() => {
-      console.log("Success")
-      let mess = "TCB1 Chuyển khoản thành công"
-      await approve(page,mess,allData)
-    }).catch(async(res) => {
-      console.log("Failed")
-      approve(page,"Có lỗi trong quá trình xuất khoản",allData)
-      let config = {
-        method: 'post',
-        url: 'http://localhost:8090/TotalControl/v2/devices/'+device+'/sendAai?token='+token+'&params={query:\'T:Nhập mã mở khoá để xác thực\',action:\'getText\'}',
-        headers: { }
-      };
-      axios(config)
-      .then(async function (response) {
-        if(!response.data.value.retval){
-          console.log("not okay")
-          await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
-          console.log("Failed")
-          khoadon(page)
-        }else{
-          khoadon(page)
-        }
-      }).catch(err => console.log(err));
-    })
-  }
+  await page.waitForSelector('.successful__cover',{timeout: 10000}).then(async() => {
+    console.log("Success")
+    let mess = "TCB1 Chuyển khoản thành công"
+    await approve(page,mess,allData)
+  }).catch(async(res) => {
+    console.log("Failed")
+    approve(page,"Có vấn đề trong quá trình xuất khoản, vui lòng kiểm tra lại số dư tài khoản!",allData)
+    let config = {
+      method: 'post',
+      url: data.portal+'portal?path=TotalControl/v2/devices/'+portal.device+'/sendAai?token='+portal.token+'&params={query:\'T:Nhập mã mở khoá để xác thực\',action:\'getText\'}',
+      headers: { }
+    };
+    axios(config)
+    .then(async function (response) {
+      if(!response.data.value.retval){
+        console.log("not okay")
+        await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
+        console.log("Failed")
+        transfer(page)
+      }else{
+        transfer(page)
+      }
+    }).catch(err => console.log(err));
+  })
 }
 
 async function approve(page,mess,allData){
   let axios = require('axios');
-  let data = JSON.stringify({
+  let info = JSON.stringify({
     "applicationId": allData.withdrawid
   });
 
@@ -379,7 +337,7 @@ async function approve(page,mess,allData){
       'x-requested-with': ' XMLHttpRequest', 
       'Content-Type': 'application/json'
     },
-    data : data
+    data : info
   };
 
   axios(config)
@@ -400,16 +358,19 @@ async function approve(page,mess,allData){
       await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
       transfer(page)
     }else{
-      approve(page,mess,allData)
+      await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
+      await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
+      transfer(page)
     }
-  }).catch(function (error) {
-    console.log(error);
-    approve(page,mess,allData)
+  }).catch(async function (error) {
+    await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
+    await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
+    transfer(page)
   });
 }
 
 async function deny(page,mess,allData){
-  let data = JSON.stringify({
+  let info = JSON.stringify({
     "id": allData.withdrawid
   });
 
@@ -425,44 +386,40 @@ async function deny(page,mess,allData){
       'x-requested-with': ' XMLHttpRequest', 
       'Content-Type': 'application/json'
     },
-    data : data
+    data : info
   };
   axios(config)
   .then(async function (response) {
-    if(response.data.Code==200){
-      let data = JSON.stringify({
-        "id": allData.withdrawid,
-        "portalMemo": mess
-      });
-      
-      let config = {
-        method: 'post',
-        url: 'https://management.cdn-dysxb.com/VerifyWithdraw/UpdatePortalMemo',
-        headers: { 
-          'authorization': 'Bearer '+allData.token, 
-          'origin': ' http://irp.jdtmb.com', 
-          'referer': ' http://irp.jdtmb.com/', 
-          'sec-fetch-mode': ' cors', 
-          'sec-fetch-site': ' cross-site', 
-          'x-requested-with': ' XMLHttpRequest', 
-          'Content-Type': 'application/json'
-        },
-        data : data
-      };
-      
-      axios(config)
-      .then(async function (response) {
-        await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
-        await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
-        transfer(page)
-      }).catch( async function (error) {
-        await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
-        await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
-        transfer(page)
-      });
-    }else{
-      deny(page,mess,allData)
-    }
+    let data = JSON.stringify({
+      "id": allData.withdrawid,
+      "portalMemo": mess
+    });
+    
+    let config = {
+      method: 'post',
+      url: 'https://management.cdn-dysxb.com/VerifyWithdraw/UpdatePortalMemo',
+      headers: { 
+        'authorization': 'Bearer '+allData.token, 
+        'origin': ' http://irp.jdtmb.com', 
+        'referer': ' http://irp.jdtmb.com/', 
+        'sec-fetch-mode': ' cors', 
+        'sec-fetch-site': ' cross-site', 
+        'x-requested-with': ' XMLHttpRequest', 
+        'Content-Type': 'application/json'
+      },
+      data : data
+    };
+    
+    axios(config)
+    .then(async function (response) {
+      await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
+      await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
+      transfer(page)
+    }).catch( async function (error) {
+      await queue.deleteMany({withdrawid:allData.withdrawid}).exec()
+      await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
+      transfer(page)
+    });
   }).catch(function (error) {
     console.log(error);
     deny(page,mess,allData)
@@ -470,10 +427,6 @@ async function deny(page,mess,allData){
 
 }
 
-module.exports = async(req,res,next)=>{
-  await login(req,res,next)
-  res.json("Done")
-}
 
 
 

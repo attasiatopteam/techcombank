@@ -1,49 +1,32 @@
 const fs = require('fs')
 const axios = require('axios');
 module.exports = {
-  createLogin : (req,res,next)=>{
-    let auth = btoa(req.body.username+":"+req.body.password)
+  createLogin: (req,res,next)=>{
     let config = {
       method: 'get',
-      url: 'http://localhost:8090/TotalControl/v2/login',
+      url: req.body.baseUrl+'connection?auth='+req.query.auth,
       headers: { 
-        'Authorization': auth
-      }
+        'Content-Type': 'application/json'
+      },
     };
+    console.log(config.url)
     axios(config)
     .then(function (response) {
-      console.log(response.data.status)
-      if(response.data.status==true){
-        let token = response.data.value.token
-        let config = {
-          method: 'get',
-          url: 'http://localhost:8090/TotalControl/v2/devices?q=all&token='+token,
-        };
-        axios(config)
-        .then(function (response) {
-          let data = {
-            statuscode:200,
-            valid:true,
-            device: response.data.ids[0],
-            token: token
-          }
-          fs.writeFile('constant/auth.json', JSON.stringify(data) , function (err) {
-            if (err) throw err;
-            res.json(data);
-          });
-        }).catch(err => console.log(err))
-      }else{
-        res.json({
-          statuscode:403,
-          valid:false,
-          err: "Sai thông tin đăng nhập"
-        })
+      try {
+        fs.writeFile('constant/auth'+(req.query.auth*1+1)+'.json', JSON.stringify(response.data) , function (err) {
+          if (err) throw err;
+          res.json(response.data);
+        });
+      } catch (error) {
+        res.json(error)
       }
-    }).catch(err => console.log(err))
-  },
-  login: (req,res,next)=>{
-    let readFile = fs.readFileSync('data/auth.json')
-    let jdata = JSON.parse(readFile)
-    res.json(jdata)
+    })
+    .catch(function (error) {
+      res.json({
+        statusCode:404,
+        valid:false,
+        mess:error.message
+      })
+    });
   }
 }
