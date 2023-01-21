@@ -30,7 +30,7 @@ var loadbodata = async() => {
 }
 
 async function login(req,res,next){
-  keeplogin(data.portal,data.device,data.token)
+  keeplogin(data.portal,data.device,data.token,data.auth)
   return puppeteer.launch({
     headless: false,
     // executablePath: './chrome/chrome.exe',
@@ -117,7 +117,7 @@ async function enterOtp(data){
     }else{
       var config = {
         method: 'post',
-        url: data.portal+'portal?path=TotalControl/v2/devices/'+data.device+'/screen/texts?token='+data.token+'&text='+otp,
+        url: data.portal+'portal?path=TotalControl/v2/devices/'+data.device+'/screen/texts?token='+data.token+'&text='+data.bank_otp,
         headers: { }
       };
       setTimeout(()=>{
@@ -137,7 +137,7 @@ async function enterOtp(data){
 
 async function transfer(page){
   loadbodata().then( async e =>{
-    await page.waitForSelector('.bb-account-info__product-number',{timeout: 0})
+    await page.waitForSelector('.bb-account-info__product-number',{timeout: 15000})
     let bank_info = await page.$eval('.bb-account-info__product-number',(e)=>{
       return e.textContent
     })
@@ -255,9 +255,10 @@ async function transfer(page){
       await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
       transfer(page)
     }
-  }).catch(err => {
+  }).catch(async err => {
     console.log("Load data: Failed")
     console.log(err)
+    await page.goto('https://onlinebanking.techcombank.com.vn/#/transfers-payments/pay-someone?transferType=other',{timeout: 0});
     transfer(page)
   })
 }
@@ -266,6 +267,7 @@ async function confirmTransfer(page,allData){
   let info = JSON.stringify({
     "device": data.device,
     "token": data.token,
+    "auth":data.auth
   });
 
   let config = {
@@ -293,7 +295,7 @@ async function confirm(page,allData){
     let mess = "TCB1 Chuyển khoản thành công"
     await approve(page,mess,allData)
   }).catch(async(res) => {
-    await approve(page,mess,allData)
+    await approve(page,"Vui lòng kiểm tra lại!",allData)
   })
 }
 

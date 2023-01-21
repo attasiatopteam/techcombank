@@ -55,6 +55,7 @@ module.exports = {
 	"AGRIBANK":"Agriculture and Rural",
 	"ABBANK":"An Binh Commercial",
 	"Techcom Bank":"Techcom",
-	"PGBANK":"PG"
-	// "PHUONGDONG BANK":
+	"PGBANK":"PG",
+	"PVCOMBANK":"PVcomBank",
+	"PHUONGDONG BANK":"Orient Commercial"
 }

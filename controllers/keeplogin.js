@@ -1,10 +1,10 @@
 const axios = require('axios')
 const fs = require('fs');
-module.exports = function keeplogin(baseUrl,device,token){
+module.exports = function keeplogin(baseUrl,device,token,auth){
   let data = '';
   var config = {
     method: 'post',
-    url: baseUrl+'keeplogin?device='+device+'&token='+token,
+    url: baseUrl+'keeplogin?device='+device+'&token='+token+'&auth='+auth,
     headers: { },
     data : data
   };
